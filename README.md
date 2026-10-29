@@ -2,7 +2,7 @@
 
 > **Proyecto Final de Cátedra**  
 > **Materia:** Gestión de Software II (ISCA 4014)  
-> **Docente Titular:** Prof. Walter Lauxman  
+> **Docente Titular:** Prof. Walter Lauxmann  
 > **Alumna:** Julia Rodriguez  
 > **Cliente / Estudio:** Estudio Jurídico M&C 
 > **Fecha de Entrega:** Octubre 2026  
