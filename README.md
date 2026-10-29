@@ -21,9 +21,11 @@ El sistema reemplaza planillas y registros dispersos por una plataforma web segu
 
 | Capa | Tecnología | Descripción |
 | :--- | :--- | :--- |
-| **Base de Datos** | MySQL 8.x / 9.x (WampServer) | Base de datos relacional normalizada `MYC` con integridad referencial |
-| **Backend API** | Node.js + Express.js | API RESTful modular (puerto `4000`) con `mysql2/promise`, `bcryptjs` y `jsonwebtoken` |
+| **Base de Datos** | MySQL 8.x / 9.x (WampServer) | Base de datos relacional normalizada `MYC` con 6 tablas e integridad referencial |
+| **Backend API** | Node.js + Express.js | API RESTful modular (puerto `4000`) con `mysql2/promise`, `bcryptjs`, `jsonwebtoken` y middleware de autenticación |
 | **Frontend Web** | React 19 + Vite | Single Page Application (puerto `5173`) reactiva con Context API y React Router DOM |
+| **Notificaciones** | Toast System (React Context) | Sistema no intrusivo de toasts estilizados Dark Glass que reemplaza popups `alert()` nativos |
+| **Trazabilidad** | Soft Delete + Reactivación | Soporte dual de baja lógica (`Activo=0`, `Fbaja`, `FechaBaja`) y eliminación definitiva con modal confirmatorio |
 | **Iconografía** | Lucide React | Iconografía vectorial moderna y consistente |
 | **Estilo Visual** | CSS Vanilla (Dark Glass) | Glassmorphism elegante, paleta `#0B080F`, `#100C12`, `#251A2B`, dorado `#D4B16A` y tipografía *Cinzel* + *Plus Jakarta Sans* |
 | **Reportes** | Motor de Impresión CSS (`@media print`) | Generación y exportación de padrones en PDF listos para imprimir con membrete oficial |
@@ -68,6 +70,7 @@ erDiagram
         varchar Jueztram
         varchar Secretario
         varchar Telefono
+        tinyint Activo
     }
 
     EXPEDIENTES {
@@ -101,6 +104,7 @@ erDiagram
         text Resumen
         varchar TipoMime
         longtext ArchivoContenido
+        tinyint Activo
         timestamp CreatedAt
     }
 
@@ -124,9 +128,10 @@ graph TD
         CU3["3. Imprimir / Exportar Padrón de Clientes"]
         CU4["4. Gestionar Expedientes (Judiciales / Extrajudiciales)"]
         CU5["5. Vincular Partes (Demandante / Demandado)"]
-        CU6["6. Gestionar Documentación y Escritos"]
+        CU6["6. Gestionar Documentación y Escritos (Subir, Previsualizar PDF, Descargar)"]
         CU7["7. Gestionar Juzgados y Secretarías"]
         CU8["8. Monitorear Auditoría y Métricas (Dashboard)"]
+        CU9["9. Trazabilidad y Gestión de Bajas (Baja Lógica / Definitiva / Reactivación)"]
     end
 
     Abogado --> CU1
@@ -137,6 +142,7 @@ graph TD
     Abogado --> CU6
     Abogado --> CU7
     Abogado --> CU8
+    Abogado --> CU9
 ```
 
 ---
@@ -161,24 +167,41 @@ graph TD
 - Asociación de múltiples clientes por causa como *Demandante* o *Demandado*.
 
 ### D. Gestión de Documentación y Escritos Asociados
-- Modal interactivo de **"Documentos"** accesible desde cada expediente.
-- Registro y vinculación de escritos procesales clasificados en:
-  - *Demanda / Contestación*
-  - *Contrato / Instrumento Notarial*
-  - *Poder Judicial*
-  - *Cédula / Notificación Judicial*
-  - *Prueba Documental / Pericial*
-  - *Sentencia / Auto Interlocutorio*
-- Funcionalidad para previsualizar extractos jurídicos, descargar copias certificadas e incorporar nuevos archivos desde el equipo.
+- **Modal interactivo de "Documentos"** accesible directamente desde cada ficha de expediente en el padrón.
+- **Persistencia en Base de Datos**: Almacenamiento normalizado en la tabla `documentos` de MySQL, incluyendo metadatos (categoría, fecha, autor, resumen, tamaño, tipo MIME) y contenido codificado en Base64 (`ArchivoContenido`).
+- **Adjuntar archivos desde la PC**: Carga directa de archivos PDF, imágenes (.png, .jpg) o escritos judiciales procesados localmente.
+- **Visor Embebido en Tiempo Real**: Renderizado interactivo de PDFs e imágenes directamente en el navegador mediante iframe integrado y modales con opción de apertura en pestaña completa.
+- **Descargas Oficiales**: Descarga del archivo digital original o generación de copia digital con encabezado, membrete institucional del Estudio Jurídico M&C y firma de la letrada titular.
+- **Clasificación procesal**: Demanda, Contrato, Poder, Cédula, Prueba y Sentencia.
+- **Trazabilidad documental**: Soporte de baja lógica (`Activo = 0`) para desafectar escritos sin eliminarlos del expediente, con posibilidad de reactivación.
 
 ### E. Gestión de Juzgados
 - Registro de tribunales: Número, nombre oficial, juez de trámite, secretario y teléfonos de contacto.
 - Validación de integridad: Bloqueo de eliminación si existen expedientes radicados en el juzgado.
+- Control de estado operativo: Baja lógica (`Activo = 0`) para juzgados desafectados y reactivación inmediata.
 
 ### F. Dashboard de Auditoría y Métricas
 - Tarjetas de indicadores en tiempo real: Expedientes Activos, Total de Clientes, Juzgados Vinculados y Tasa de Éxito.
 - Feed de auditoría con las últimas resoluciones y movimientos procesales.
 - Accesos directos y tabla de causas recientes.
+
+### G. Trazabilidad de Datos, Bajas Lógicas (Soft Delete) y Reactivación
+- **Principio de Trazabilidad Jurídica**: En la administración judicial y el ejercicio profesional no es admisible la destrucción accidental o eliminación física de registros con causas históricas. El sistema prioriza la **baja lógica** para mantener auditoría y cumplimiento normativo.
+- **Variables de Control por Entidad**:
+  - `clientes`: Campo `Fbaja` (`date`). Si contiene fecha, el cliente permanece inactivo con distintivo visual en la interfaz.
+  - `expedientes`: Campos `FechaBaja` (`date`) y estado `Archivado`.
+  - `juzgado`: Campo `Activo` (`tinyint(1)`).
+  - `documentos`: Campo `Activo` (`tinyint(1)`).
+- **Diálogo Modal Dark Glass de Confirmación (`ModalConfirmacionBaja`)**:
+  - Sustituye los confirmadores nativos del navegador por una interfaz explicativa con dos niveles de acción:
+    1. **Dar de baja lógica (Inactivar)**: Recomendado. Preserva el registro, sus vínculos procesales y la trazabilidad.
+    2. **Eliminación Definitiva (Hard Delete)**: Ejecuta `DELETE` físico en MySQL previa comprobación de integridad foránea.
+  - **Reactivación**: Permite a la letrada reactivar cualquier entidad inactiva mediante un solo clic a través del verbo `PATCH /api/:entidad/:id/reactivar`.
+
+### H. Sistema de Notificaciones Dark Glass (Toasts)
+- **Eliminación total de alertas nativas**: Se reemplazaron todos los `alert()` y `confirm()` del navegador.
+- **Context API (`ToastContext` / `useToast()`)**: Mensajes flotantes con micro-animaciones, cierre automático tras 4.5 segundos y estilos dedicados para `success`, `error`, `warning` e `info`.
+- **Favicon Institucional**: Icono vectorial oficial de la Balanza de la Justicia en oro champán (`#D4B16A`) sobre fondo Dark Plum (`#0B080F`).
 
 ---
 
@@ -197,7 +220,7 @@ graph TD
    ```text
    C:\wamp64\www\estudio-juridico\myc.sql
    ```
-4. El script creará automáticamente las 5 tablas con sus relaciones y datos de prueba.
+4. El script creará automáticamente las 6 tablas con sus relaciones y datos de prueba (`usuarios`, `clientes`, `juzgado`, `expedientes`, `cliente_expediente`, `documentos`).
 
 ---
 
@@ -218,7 +241,7 @@ graph TD
    DB_USER_MYC=root
    DB_PASSWORD_MYC=
    DB_PORT_MYC=3306
-   CLAVE_SECRETA_JWT=estudio_juridico_myc_secret_key_2026_segura
+   JWT_SECRET_MYC=estudio_juridico_myc_secret_key_2026_segura
    ```
 4. Iniciar el servidor:
    ```bash
@@ -260,37 +283,43 @@ Para acceder a todas las funcionalidades del sistema en el coloquio:
 
 ```text
 estudio-juridico/
-├── myc.sql                             # Volcado SQL oficial de la base de datos MYC
+├── myc.sql                             # Volcado SQL oficial de la base de datos MYC (6 tablas normalizadas)
 ├── README.md                           # Documentación técnica y académica de entrega
 ├── Etapa 1 y 2 Coloquio.docx           # Documento de especificación de requisitos y Scrum
 │
 ├── backend-api/                        # Servidor RESTful Node.js + Express
 │   ├── .env                            # Variables de entorno y credenciales MySQL
+│   ├── .gitignore                      # Exclusión de dependencias, variables y logs
 │   ├── server.js                       # Entrada principal de la aplicación Express
 │   ├── package.json                    # Dependencias backend (mysql2, jsonwebtoken, bcryptjs, cors)
-│   ├── crearUsuario.js                 # Script utilitario para alta de administradores
 │   └── src/
 │       ├── db.js                       # Pool de conexiones MySQL con promesas
-│       ├── controller/                 # Controladores con lógica de negocio y validación
+│       ├── middleware/                 # Middlewares de seguridad e interceptación
+│       │   └── autenticar.middleware.js # Validación de JWT (Bearer Token)
+│       ├── controller/                 # Controladores con lógica de negocio, trazabilidad y validación
 │       │   ├── autenticacion.controller.js
-│       │   ├── cliente.controller.js
-│       │   ├── expediente.controller.js
-│       │   └── juzgado.controller.js
-│       └── routes/                     # Definición de endpoints REST
+│       │   ├── cliente.controller.js   # ABM de clientes con baja lógica (Fbaja) y reactivación
+│       │   ├── documento.controller.js # Alta, previsualización, baja lógica y definitiva de escritos
+│       │   ├── expediente.controller.js # Gestión de causas, vinculación de partes y archivo
+│       │   └── juzgado.controller.js   # Registro de juzgados y control de estado operativo
+│       └── routes/                     # Definición de endpoints REST y rutas protegidas
 │           ├── autenticacion.routes.js
 │           ├── clientes.routes.js
+│           ├── documentos.routes.js    # Endpoints para gestión de documentación de causas
 │           ├── expedientes.routes.js
 │           └── juzgados.routes.js
 │
 └── frontend-react/                     # Aplicación SPA React 19 + Vite
-    ├── index.html                      # Punto de entrada HTML5 con Google Fonts
+    ├── index.html                      # Punto de entrada HTML5 con Google Fonts y título oficial
     ├── package.json                    # Dependencias frontend (lucide-react, react-router-dom, axios)
     ├── vite.config.js                  # Configuración de compilación Vite
     ├── public/
-    │   └── img/                        # Recursos gráficos y logo balanza dorada
+    │   ├── favicon.svg                 # Emblema oficial de la Balanza de la Justicia en oro champán
+    │   ├── icons.svg                   # Sprite de iconos auxiliares
+    │   └── img/                        # Recursos gráficos y fondos Dark Glass
     └── src/
-        ├── index.css                   # Sistema de diseño Dark Glass y reglas de impresión
-        ├── App.jsx                     # Rutas protegidas y layout principal
+        ├── index.css                   # Sistema de diseño Dark Glass, Toasts y reglas de impresión
+        ├── App.jsx                     # Rutas protegidas, providers y layout principal
         ├── main.jsx                    # Montaje de la aplicación React
         ├── api/
         │   └── axios.js                # Instancia de Axios con interceptor de JWT
@@ -298,24 +327,27 @@ estudio-juridico/
         │   ├── AutenticacionContexto.jsx
         │   ├── AutenticacionProvider.jsx
         │   ├── EstudioContext.jsx
-        │   └── EstudioProvider.jsx
+        │   ├── EstudioProvider.jsx     # Contexto global del estudio (ABM, Soft Delete, Reactivación)
+        │   └── ToastContext.jsx        # Provider de notificaciones Toasts personalizadas
         └── components/
             ├── Login.jsx               # Pantalla de acceso con estética Dark Glass
             ├── Dashboard.jsx           # Panel de control con métricas y auditoría
             ├── Sidebar.jsx             # Barra lateral fija con identidad de marca
             ├── TopBar.jsx              # Barra superior con buscador y perfil de usuario
+            ├── common/
+            │   └── ModalConfirmacionBaja.jsx # Modal Dark Glass para baja lógica, hard delete y reactivación
             ├── clientes/
-            │   ├── ClienteItem.jsx     # Tarjeta individual con edición y eliminación
+            │   ├── ClienteItem.jsx     # Tarjeta individual con edición, badges de baja y confirmador
             │   ├── FormularioCliente.jsx # Formulario de alta para físicas y jurídicas
             │   └── VistaCliente.jsx    # Listado, filtros y Padrón Imprimible (Paso B)
             ├── expedientes/
-            │   ├── ExpedienteItem.jsx  # Ficha de causa, partes vinculadas y botón docs
+            │   ├── ExpedienteItem.jsx  # Ficha de causa, partes vinculadas, estado y botón docs
             │   ├── FormularioExpediente.jsx # Formulario de alta de causas
-            │   ├── ModalDocumentos.jsx # Gestión de documentación y escritos judiciales
+            │   ├── ModalDocumentos.jsx # Gestión integral de documentación, visor PDF y descargas
             │   └── VistaExpediente.jsx # Listado de expedientes con filtros de estado
             └── juzgados/
                 ├── FormularioJuzgado.jsx # Registro de tribunales y fueros
-                ├── JuzgadoItem.jsx     # Tarjeta de juzgado con datos de secretaría
+                ├── JuzgadoItem.jsx     # Tarjeta de juzgado con datos de secretaría y baja lógica
                 └── VistaJuzgado.jsx    # Directorio de juzgados
 ```
 
